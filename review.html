@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
-<!-- TEMPLATE_VERSION: v1.1 (2026-07-25) プログレスバー拡大(質問n/7・％表示)＋結果ページに投稿手順と写真動画の案内・投稿ボタン拡大 -->
+<!-- TEMPLATE_VERSION: v1.3 (2026-07-30) 年代を6区分に変更／貼り付け欄を廃止しGoogleクチコミボタンを2箇所に／ v1.2 (2026-07-29) 生成失敗時はコピー・投稿ボタンを隠しエラー文の投稿を防止／ v1.1 (2026-07-25) プログレスバー拡大(質問n/7・％表示)＋結果ページに投稿手順と写真動画の案内・投稿ボタン拡大 -->
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -357,6 +357,24 @@
       margin-bottom: 20px;
       min-height: 120px;
     }
+    /* v1.2：生成に失敗したときの表示。
+       このときは下のコピー・投稿ボタンをJSで隠すので、エラー文が投稿されることはない */
+    .review-box.is-error {
+      background: #fdf3f1;
+      border: 1.5px solid var(--neg);
+      color: var(--neg);
+      font-weight: 500;
+      min-height: 0;
+    }
+    .retry-hint {
+      font-size: 13.5px;
+      color: var(--mid);
+      line-height: 1.8;
+      background: var(--warm);
+      border-radius: 8px;
+      padding: 13px 15px;
+      margin-bottom: 20px;
+    }
     .paste-area {
       width: 100%;
       min-height: 80px;
@@ -487,10 +505,12 @@
     <div>
       <div class="sub-label">年代</div>
       <div class="radio-group" id="age-group">
-        <div class="radio-btn" onclick="selectRadio('age','20s',this)">20代以下</div>
+        <div class="radio-btn" onclick="selectRadio('age','10s',this)">10代以下</div>
+        <div class="radio-btn" onclick="selectRadio('age','20s',this)">20代</div>
         <div class="radio-btn" onclick="selectRadio('age','30s',this)">30代</div>
         <div class="radio-btn" onclick="selectRadio('age','40s',this)">40代</div>
-        <div class="radio-btn" onclick="selectRadio('age','50s',this)">50代以上</div>
+        <div class="radio-btn" onclick="selectRadio('age','50s',this)">50代</div>
+        <div class="radio-btn" onclick="selectRadio('age','60s',this)">60代以上</div>
       </div>
     </div>
   </div>
@@ -589,18 +609,26 @@
 
 <!-- STEP 9: 結果 -->
 <div class="card step" id="step-9">
-  <div class="result-title">✦ クチコミが完成しました</div>
-  <div class="disclaimer">
+  <div class="result-title" id="result-title">✦ クチコミが完成しました</div>
+  <div class="disclaimer" id="result-disclaimer">
     この文章はお客様の実体験をもとに作成されています。<br>
     内容に誤りや気になる点がございましたら、<br>
     投稿前にご自身で修正をお願いいたします。
   </div>
   <div class="review-box" id="review-result"></div>
+  <!-- 失敗したときだけ出る案内。下の「この雰囲気で作り直す」へ誘導する -->
+  <div class="retry-hint" id="retry-hint" style="display:none;">
+    お手数ですが、下の <b>「この雰囲気で作り直す」</b> をもう一度押してください。<br>
+    回答した内容はそのまま残っています。
+  </div>
+  <!-- ▼ 生成に失敗したときは、ここから下をまるごと隠す（エラー文の投稿を防ぐため） -->
+  <div id="result-actions">
   <button class="btn btn-copy" onclick="copyReview()">クチコミをコピーする</button>
   <div class="copy-success" id="copy-success"></div>
   <div class="divider"></div>
-  <div class="paste-label">↓ ここに貼り付けて確認できます（任意）</div>
-  <textarea class="paste-area" placeholder="コピーしたクチコミをここに貼り付けてみてください"></textarea>
+  <a id="google-review-link-top" href="#" target="_blank" class="btn btn-google" style="text-decoration:none;text-align:center;display:block;">
+    Googleクチコミへ投稿する
+  </a>
   <div class="divider"></div>
   <div class="next-guide">
     <div class="next-guide-title">このあと、Googleの画面ですること</div>
@@ -625,6 +653,8 @@
   <a id="google-review-link" href="#" target="_blank" class="btn btn-google" style="text-decoration:none;text-align:center;display:block;">
     Googleクチコミへ投稿する
   </a>
+  </div>
+  <!-- ▲ ここまでが「成功したときだけ見せる」範囲 -->
   <div class="divider"></div>
   <div style="text-align:center;font-size:12.5px;color:var(--mid);margin-bottom:8px;">雰囲気を変えて作り直せます</div>
   <div class="radio-group" id="tension-group-result" style="margin-bottom:12px;">
@@ -660,6 +690,7 @@ function applyConfig() {
   document.getElementById('welcome-body').textContent =
     SALON_CONFIG.welcomeMessage + "\n" + SALON_CONFIG.subMessage;
   document.getElementById('google-review-link').href = SALON_CONFIG.googleReviewUrl;
+  document.getElementById('google-review-link-top').href = SALON_CONFIG.googleReviewUrl;
   if (SALON_CONFIG.welcomeIcon) {
     document.getElementById('welcome-icon').textContent = SALON_CONFIG.welcomeIcon;
   }
@@ -777,6 +808,33 @@ function toggleCheck(id, el, stateKey, btnId) {
   document.getElementById(btnId).disabled = state[stateKey].length === 0;
 }
 
+// v1.2：生成に成功したかどうか。失敗中は true にならない。
+// これが false のあいだは、コピー・投稿ボタンを隠し、copyReview() も動かない。
+// （エラー文がそのままGoogleクチコミに投稿されてしまうのを防ぐため）
+var reviewReady = false;
+
+function showResult(text) {
+  reviewReady = true;
+  document.getElementById('review-result').textContent = text;
+  document.getElementById('review-result').classList.remove('is-error');
+  document.getElementById('result-title').textContent = '✦ クチコミが完成しました';
+  document.getElementById('result-disclaimer').style.display = '';
+  document.getElementById('retry-hint').style.display = 'none';
+  document.getElementById('result-actions').style.display = '';
+  document.getElementById('copy-success').textContent = '';
+}
+
+function showResultError(message) {
+  reviewReady = false;
+  document.getElementById('review-result').textContent = message;
+  document.getElementById('review-result').classList.add('is-error');
+  document.getElementById('result-title').textContent = '✦ うまく作れませんでした';
+  document.getElementById('result-disclaimer').style.display = 'none';
+  document.getElementById('retry-hint').style.display = '';
+  document.getElementById('result-actions').style.display = 'none';   // ← コピー・投稿ボタンを隠す
+  document.getElementById('copy-success').textContent = '';
+}
+
 async function generateReview() {
   state.freeText = document.getElementById('free-text').value.trim();
   goStep(8);
@@ -787,11 +845,12 @@ async function generateReview() {
       body: JSON.stringify({ system: buildSystemPrompt(), messages: [{ role: 'user', content: buildPrompt() }] })
     });
     const data = await res.json();
-    document.getElementById('review-result').textContent = data.content?.[0]?.text || "生成に失敗しました。もう一度お試しください。";
-    document.getElementById('copy-success').textContent = '';
+    const text = data.content && data.content[0] && data.content[0].text;
+    if (text) showResult(text);
+    else showResultError('文章を作れませんでした。もう一度お試しください。');
     goStep(9);
   } catch (e) {
-    document.getElementById('review-result').textContent = "通信エラーが発生しました。もう一度お試しください。";
+    showResultError('通信エラーが発生しました。もう一度お試しください。');
     goStep(9);
   }
 }
@@ -909,7 +968,7 @@ function buildSystemPrompt(){
   var p = humanizeDrawPersona();
   var prof = p.prof;
   var genderText = ({female:'女性',male:'男性',other:'性別未回答'})[state.gender] || '性別未回答';
-  var ageText = ({'20s':'20代以下','30s':'30代','40s':'40代','50s':'50代以上'})[state.age] || '';
+  var ageText = ({'10s':'10代以下','20s':'20代','30s':'30代','40s':'40代','50s':'50代','60s':'60代以上'})[state.age] || '';
   // 店舗独自ワードの抑制。基本は全て禁止（店により有無が違い宣伝文＝AI感になるため）。
   // 例外は SALON_CONFIG.promoteTerms に明示的に入れた語だけ（＝新規作成時にユーザーが「載せてよい」と
   // 案件ごとに承認した店舗独自ワード）。promoteTerms が無い/空なら、店舗独自ワードは全て抑制。
@@ -986,7 +1045,7 @@ function buildPrompt() {
   const hasNeg = [...state.goodPoints, ...state.recommendations, ...state.staffImpressions]
     .some(id => allGood.concat(SALON_CONFIG.recommendations, SALON_CONFIG.staffImpressions).find(x => x.id === id)?.negative);
   const genderText = { female: '女性', male: '男性', other: '未回答' }[state.gender] || '未回答';
-  const ageText = { '20s': '20代以下', '30s': '30代', '40s': '40代', '50s': '50代以上' }[state.age] || '';
+  const ageText = { '10s': '10代以下', '20s': '20代', '30s': '30代', '40s': '40代', '50s': '50代', '60s': '60代以上' }[state.age] || '';
 
   return `以下の情報をもとに、${SALON_CONFIG.salonName}のGoogleクチコミ文章を作成してください。
 
@@ -1005,6 +1064,8 @@ function buildPrompt() {
 }
 
 function copyReview() {
+  // v1.2：生成に失敗しているあいだは絶対にコピーさせない（エラー文の投稿防止）
+  if (!reviewReady) return;
   const text = document.getElementById('review-result').textContent;
   navigator.clipboard.writeText(text).then(() => {
     document.getElementById('copy-success').textContent = '✓ コピーしました！Googleクチコミに貼り付けてください。';
